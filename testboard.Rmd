@@ -33,12 +33,38 @@ bikeStations <- data %>%
 
 # Importing the whole bikerental dataset
 
+#load("C:/Users/konra/tubCloud/Uni/20WiSe/DataScience/MidsemesterAssignment/final project/Rohdaten/BikeExport.RData")
+#load("C:/Users/konra/tubCloud/Uni/20WiSe/DataScience/MidsemesterAssignment/final project/Rohdaten/allroutes.RData")
+
 load("C:/Users/loren/tubCloud/Shared/MidsemesterAssignment/final project/Rohdaten/BikeExport.RData")
+load("C:/Users/loren/tubCloud/Shared/MidsemesterAssignment/final project/Rohdaten/allroutes.RData")
+
+# Getting only bike 15776
+
+bikestops_clean <- data %>%
+  separate(col = id, sep = "_", into = c(NA, "id")) %>% 
+  select(id, commonName, lat, lon) %>% 
+  arrange(id) %>% 
+  mutate(id = as.numeric(id))
+
+bike_15776 <- bikerawdata %>% 
+  filter(Bike.Id == 15776) %>%
+  mutate(EndDate = strptime(End.Date, "%d/%m/%Y %H:%M")) %>% 
+  arrange(EndDate) %>% 
+  inner_join(bikestops_clean, by = c("StartStation.Id" = "id")) %>% 
+  rename(commonName_start = commonName, lat_start = lat, lon_start = lon) %>% 
+  inner_join(bikestops_clean, by = c("EndStation.Id" = "id")) %>% 
+  rename(commonName_end = commonName, lat_end = lat, lon_end = lon)
+
+allroutes <- allroutes %>% 
+  left_join(bike_15776, by = c("id" = "Rental.Id")) %>% 
+  mutate(Starttime = lubridate::hour(strptime(Start.Date, "%d/%m/%Y %H:%M")) +
+           lubridate::minute(strptime(Start.Date, "%d/%m/%Y %H:%M")) / 60,
+         dayride = floor(Starttime) > 7 & floor(Starttime) < 20)
 
 # Using a little bit of it to make it faster at first
 
 bikerawdata <- bikerawdata %>%
-  filter(EndStation.Id == "33") %>%
   mutate(EndDate = strptime(`End.Date`, "%d/%m/%Y %H:%M"), EndDate2 = format(EndDate, "%d/%m/%Y")) %>%
   mutate(StartDate = strptime(`Start.Date`, "%d/%m/%Y %H:%M"), StartYear = format(StartDate, "%Y"), StartMonth = format(StartDate, "%m"))
 
@@ -59,6 +85,11 @@ bikes062020 <- bikerawdata %>%
   mutate(startLon = lon)
 
 # London map
+
+#LondonWard <- st_read("C:/Users/konra/tubCloud/Uni/20WiSe/DataScience/MidsemesterAssignment/Rohdaten/Boroughs_London/London_Borough_Excluding_MHW.shp") %>%
+#  st_transform(4326)
+#LondonLSOA <- st_read("C:/Users/konra/tubCloud/Uni/20WiSe/DataScience/MidsemesterAssignment/Rohdaten/Boroughs_London/LSOA_2011_London_gen_MHW.shp") %>% 
+#  st_transform(4326)
 
 LondonWard <- st_read("C:/Users/loren/tubCloud/Shared/MidsemesterAssignment/Rohdaten/Boroughs_London/London_Borough_Excluding_MHW.shp") %>%
   st_transform(4326)
@@ -100,13 +131,13 @@ LSOAcount2 <- starts_joinedLSOA2 %>%
 LondonLSOA_withBikes <- LondonLSOA %>% 
   left_join(LSOAcount) %>% 
   filter(bikecount < 100000000) %>%
-  mutate("Bike rentals per resident" = bikecount / USUALRES) %>%
+  mutate("Bike rentals per resident (per month)" = bikecount / USUALRES) %>%
   relocate(LSOA11NM, .before = LSOA11CD)
 
 LondonLSOA_withBikes2 <- LondonLSOA %>% 
   left_join(LSOAcount2) %>% 
   filter(bikecount < 100000000) %>%
-  mutate("Bike rentals per resident" = bikecount / USUALRES) %>%
+  mutate("Bike rentals per resident (per month)" = bikecount / USUALRES) %>%
   relocate(LSOA11NM, .before = LSOA11CD)
 
 
@@ -125,14 +156,15 @@ LSOAtraveltime2 <- starts_joinedLSOA2 %>%
 LondonLSOA_traveltime <- LondonLSOA %>%
   left_join(LSOAtraveltime) %>%
   filter(avg_rentaltime < 100001) %>%
-  mutate("Average rental time" = avg_rentaltime) %>%
+  mutate("Average rental time (minutes)" = avg_rentaltime) %>%
   relocate(LSOA11NM, .before = LSOA11CD)
 
 LondonLSOA_traveltime2 <- LondonLSOA %>%
   left_join(LSOAtraveltime2) %>%
   filter(avg_rentaltime < 100001) %>%
-  mutate("Average rental time" = avg_rentaltime) %>%
+  mutate("Average rental time (minutes)" = avg_rentaltime) %>%
   relocate(LSOA11NM, .before = LSOA11CD)
+
 ```
 
 Bike rentals per resident 
@@ -167,7 +199,6 @@ Column {data-width=1000}
 
 ```{r}
 # Plotting bike rentals per resident 2019 vs 2020
-# STYLE ABÄNDERN!
 
 tmap_mode("view")
 
@@ -177,10 +208,8 @@ tm_shape(LondonWard, bbox = c(-0.24,51.45,0,51.55)) +
   tm_fill(col = "white", palette = c("lightgrey", "white")) +
   tm_borders() +
   tm_shape(LondonLSOA_withBikes) +
-  tm_polygons(col = "Bike rentals per resident", style = "fixed", breaks = c(0.1, 0.5, 1, 5, 10, 50)) +
-  tm_shape(sum_startpoints, size = 0.15) +
-  tm_dots(col = "blue") +
-  tmap_options(bg.color = "lightblue")
+  tm_polygons(col = "Bike rentals per resident (per month)", style = "fixed", breaks = c(0, 0.3, 0.6, 1, 2, 3, 4, 7, 10, 30, 60)) 
+
 ```
 
 > Source data from: <https://tfl.gov.uk/info-for/open-data-users/our-open-data?intcmp=3671>
@@ -194,10 +223,8 @@ tm_shape(LondonWard, bbox = c(-0.24,51.45,0,51.55)) +
   tm_fill(col = "white", palette = c("lightgrey", "white")) +
   tm_borders() +
   tm_shape(LondonLSOA_withBikes2) +
-  tm_polygons(col = "Bike rentals per resident", style = "log10_pretty") +
-  tm_shape(sum_startpoints2, size = 0.15) +
-  tm_dots(col = "blue") +
-  tmap_options(bg.color = "lightblue")
+  tm_polygons(col = "Bike rentals per resident (per month)", style = "fixed", breaks = c(0, 0.3, 0.6, 1, 2, 3, 4, 7, 10, 30, 60)) 
+
 ```
 
 > Source data from: <https://tfl.gov.uk/info-for/open-data-users/our-open-data?intcmp=3671>
@@ -234,22 +261,28 @@ Average rental time
 Column {data-width=650}
 -----------------------------------------------------------------------
 
-### Average rental time June 2019
+### Average rental time June 2019 (minutes)
 
 ```{r}
-valueBox(round(sum(LondonLSOA_traveltime$avg_rentaltime) / nrow(LondonLSOA_traveltime),2), icon = "fa-clock")
+x <- round(sum(LondonLSOA_traveltime$avg_rentaltime) / nrow(LondonLSOA_traveltime),2)
+valueBox(x ,icon = "fa-clock")
+
 ```
 
-### Average rental time June 2020
+### Average rental time June 2020 (minutes)
 
 ```{r}
-valueBox(round(sum(LondonLSOA_traveltime2$avg_rentaltime) / nrow(LondonLSOA_traveltime2),2), icon = "fa-clock")
+y <- round(sum(LondonLSOA_traveltime2$avg_rentaltime) / nrow(LondonLSOA_traveltime2),2)
+valueBox(as.difftime(y, units = "mins", format = "%M:%S"), icon = "fa-clock")
+
 ```
 
-### Increase in average rental time 
+### Increase in average rental time (minutes)
 
 ```{r}
-valueBox(round((sum(LondonLSOA_traveltime2$avg_rentaltime) / nrow(LondonLSOA_traveltime2)) - (sum(LondonLSOA_traveltime$avg_rentaltime) / nrow(LondonLSOA_traveltime)), 2), icon = "fa-arrow-up")
+z <- round((sum(LondonLSOA_traveltime2$avg_rentaltime) / nrow(LondonLSOA_traveltime2)) - (sum(LondonLSOA_traveltime$avg_rentaltime) / nrow(LondonLSOA_traveltime)), 2)
+valueBox(as.difftime(z, units = "mins", format = "%M:%S"), icon = "fa-arrow-up")
+
 ```
 
 Column {data-width=1000}
@@ -266,10 +299,8 @@ tm_shape(LondonWard, bbox = c(-0.24,51.45,0,51.55)) +
   tm_fill(col = "white", palette = c("lightgrey", "white")) +
   tm_borders() +
   tm_shape(LondonLSOA_traveltime) +
-  tm_polygons(col = "Average rental time", style = "log10_pretty") +
-  tm_shape(sum_startpoints, size = 0.15) +
-  tm_dots(col = "blue") +
-  tmap_options(bg.color = "lightblue")
+  tm_polygons(col = "Average rental time (minutes)", style = "fixed", breaks = c(5, 7.5, 10, 12.5, 15, 17.5, 20, 25, 30, 40)) 
+
 ```
 
 > Source data from: <https://tfl.gov.uk/info-for/open-data-users/our-open-data?intcmp=3671>
@@ -282,10 +313,8 @@ tm_shape(LondonWard, bbox = c(-0.24,51.45,0,51.55)) +
   tm_fill(col = "white", palette = c("lightgrey", "white")) +
   tm_borders() +
   tm_shape(LondonLSOA_traveltime2) +
-  tm_polygons(col = "Average rental time", style = "log10_pretty") +
-  tm_shape(sum_startpoints2, size = 0.15) +
-  tm_dots(col = "blue") +
-  tmap_options(bg.color = "lightblue")
+  tm_polygons(col = "Average rental time (minutes)", style = "fixed", breaks = c(5, 7.5, 10, 12.5, 15, 17.5, 20, 25, 30, 40))
+
 ```
 
 > Source data from: <https://tfl.gov.uk/info-for/open-data-users/our-open-data?intcmp=3671>
@@ -312,4 +341,76 @@ ggplotly(p)
 Bike rental stations 
 =========================
 
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Average bike rentals per station (June 2020)
+
+```{r}
+valueBox(round(sum(sum_startpoints2$stationcount) / nrow(sum_startpoints2),2), icon = "fa-bicycle")
+```
+
+### Highest amount of rentals at one rental station (Hyde Park Corner, June 2020)
+
+```{r}
+valueBox(9520, icon = "fas fa-landmark")
+```
+
+Column {data-width=1000}
+-----------------------------------------------------------------------
+
+### Bikes rentals per station (June 2020)
+
+```{r}
+sum_startpoints2 <- sum_startpoints2 %>%
+  mutate("Total bike rentals" = stationcount) %>% 
+  st_as_sf()
+
+tm_shape(sum_startpoints2, size = 0.15) +
+  tm_dots(size = "Total bike rentals", col = "Total bike rentals", style = "fixed", breaks = c(0, 1000, 2000, 3000, 4000, 6000, 8000, 10000))
+
+```
+
+> Source data from: <https://tfl.gov.uk/info-for/open-data-users/our-open-data?intcmp=3671>
+
+
+
+Exemplary journey of bike 15776
+=========================
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Number of Bike 15776's rentals from 08/2018 to 09/2020
+
+```{r}
+valueBox(dim(bike_15776)[1], icon = "fa-bicycle")
+```
+
+### Bike 15776's average rental duration
+
+```{r}
+valueBox(sprintf("%02dh %02dm", seconds_to_period(mean(bike_15776$Duration))@hour, minute(seconds_to_period(mean(bike_15776$Duration)))), icon = "fa-clock")
+```
+
+### `r paste("Bike 15776's longest rental duration on", format(as.POSIXct("29/07/2019 18:09", format = "%d/%m/%Y %H:%M"), "%B %d, %Y"))`
+
+```{r}
+valueBox(sprintf("%02dh %02dm", seconds_to_period(max(bike_15776$Duration))@hour, minute(seconds_to_period(max(bike_15776$Duration)))), icon = "fa-clock")
+```
+
+Column {data-width=1000}
+-----------------------------------------------------------------------
+
+### Map of all rentals of Bike 15776
+
+```{r}
+tm_shape(allroutes) +
+  tm_lines(alpha = 0.1,
+           col = "darkblue",
+           palette = c("darkblue", "orange"),
+           lwd = 2)
+```
+
+> Source data from: <https://tfl.gov.uk/info-for/open-data-users/our-open-data?intcmp=3671>
 
